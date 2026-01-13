@@ -212,13 +212,17 @@
 #define TRIG_PIN 17
 #define ECHO_PIN 18
 
-#define TRIG_PINX 13
-#define ECHO_PINX 12
+#define TRIG_PINX 36
+#define ECHO_PINX 37
 
 #define POT_PIN 9
 
-QueueHandle_t sonarXQueue;
-QueueHandle_t sonarYQueue;
+QueueHandle_t sonarPointQueue;
+
+typedef struct {
+  float x;
+  float y;
+} SonarPoint_t;
 
 
 void shiftOutByte(uint8_t data) {
@@ -261,6 +265,11 @@ uint8_t sonarToRows(float sonarVal) {
 
   return rows;
 }
+void drawPoint(int x, int y) {
+  uint8_t rows = ~(1 << y);  // aktywny wiersz
+  uint8_t cols = (1 << x);   // aktywna kolumna
+  write2(rows, cols);
+}
 
 void matrixTask(void *pv) {
   int c = 0;
@@ -269,22 +278,34 @@ void matrixTask(void *pv) {
 
   uint8_t cols = 0x00;
   uint8_t rows = 0xFF;
+  SonarPoint_t point;
   for (;;) {
-    if (xQueueReceive(sonarXQueue, &sonarYVal, portMAX_DELAY) == pdTRUE)
+    if (xQueueReceive(sonarPointQueue, &point, portMAX_DELAY) == pdTRUE)
     {
-      printf("Odebrano: %d\n", sonarYVal);
-      // for (int r = 0; r < 8; r++) {
-        uint8_t rows = 0x00;
-        // rows &= ~(1 << r);
+      // printf("Odebrano: %d\n", point);
+      // // for (int r = 0; r < 8; r++) {
+      //   uint8_t rows = 0x00;
+      //   // rows &= ~(1 << r);
 
-        uint8_t cols = sonarToCols(sonarYVal);
+      //   uint8_t cols = sonarToCols(sonarYVal);
         
-        for (int k = 0; k < 150; k++) {
-          write2(rows, cols);
-          delayMicroseconds(800);
-        }
+      //   for (int k = 0; k < 150; k++) {
+      //     write2(rows, cols);
+      //     delayMicroseconds(800);
+      //   }
       // }
       // c = (c + 1) % 8;
+      int x = map(point.x, 5, 50, 0, 7);
+      int y = map(point.y, 5, 50, 0, 7);
+      Serial.print("X: ");
+      Serial.print(x);
+      Serial.print("Y: ");
+      Serial.print(y);
+
+      x = constrain(x, 0, 7);
+      y = constrain(y, 0, 7);
+
+      drawPoint(x, y);
       vTaskDelay(pdMS_TO_TICKS(1));
     }
     else
@@ -321,78 +342,79 @@ void matrixTask(void *pv) {
 }
 
 void sonarTask(void *pv) {
-  long duration;
-  float sonarYVal;
-  // int potVal;
+  SonarPoint_t point;
+
   for (;;) {
+
+    // ===== SONAR Y =====
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    // pomiar ECHO (timeout 25 ms ~ 4 m przy 3.3 V raczej i tak mniej)
-    duration = pulseIn(ECHO_PIN, HIGH, 30000);
+    long durationY = pulseIn(ECHO_PIN, HIGH, 30000);
+    point.y = (durationY > 0) ? durationY * 0.0343 / 2.0 : -1;
+    Serial.print("PUNKT Y:");
+    Serial.println(point.y);
+    vTaskDelay(pdMS_TO_TICKS(150)); // odstęp między sonarami
 
-    if (duration == 0) {
-      Serial.println("Brak echa");
-    }
-    else {
-      // prędkość dźwięku ~343 m/s = 0.0343 cm/us
-      sonarYVal = duration * 0.0343 / 2.0;
-
-      Serial.print("Odleglosc y: ");
-      Serial.print(sonarYVal);
-      Serial.println(" cm");
-      xQueueOverwrite(sonarXQueue, &sonarYVal);
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(100));
-    // potVal = analogRead(POT_PIN);
-    // xQueueOverwrite(potQueue, &potVal);
-    // potVal = analogRead(POT_PIN);
-    // Serial.print("Potencjometr: ");
-    // Serial.println(potVal);
-    // vTaskDelay(pdMS_TO_TICKS(100));
-  }
-}
-
-void sonarXTask(void *pv) {
-  long duration;
-  float sonarXVal;
-  // int potVal;
-  for (;;) {
+    // ===== SONAR X =====
     digitalWrite(TRIG_PINX, LOW);
     delayMicroseconds(2);
     digitalWrite(TRIG_PINX, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PINX, LOW);
 
-    // pomiar ECHO (timeout 25 ms ~ 4 m przy 3.3 V raczej i tak mniej)
-    duration = pulseIn(ECHO_PINX, HIGH, 30000);
+    long durationX = pulseIn(ECHO_PINX, HIGH, 30000);
+    point.x = (durationX > 0) ? durationX * 0.0343 / 2.0 : -1;
+    Serial.print("PUNKT X:");
+    Serial.println(point.x);
 
-    if (duration == 0) {
-      Serial.println("Brak echa");
-    }
-    else {
-      // prędkość dźwięku ~343 m/s = 0.0343 cm/us
-      sonarXVal = duration * 0.0343 / 2.0;
-
-      Serial.print("Odleglosc x: ");
-      Serial.print(sonarXVal);
-      Serial.println(" cm");
-      xQueueOverwrite(sonarXQueue, &sonarXVal);
-    }
+    // ===== wysyłamy CAŁY punkt =====
+    xQueueOverwrite(sonarPointQueue, &point);
 
     vTaskDelay(pdMS_TO_TICKS(100));
-    // potVal = analogRead(POT_PIN);
-    // xQueueOverwrite(potQueue, &potVal);
-    // potVal = analogRead(POT_PIN);
-    // Serial.print("Potencjometr: ");
-    // Serial.println(potVal);
-    // vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
+
+
+// void sonarXTask(void *pv) {
+//   long duration;
+//   float sonarXVal;
+//   // int potVal;
+//   for (;;) {
+//     digitalWrite(TRIG_PINX, LOW);
+//     delayMicroseconds(2);
+//     digitalWrite(TRIG_PINX, HIGH);
+//     delayMicroseconds(10);
+//     digitalWrite(TRIG_PINX, LOW);
+
+//     // pomiar ECHO (timeout 25 ms ~ 4 m przy 3.3 V raczej i tak mniej)
+//     duration = pulseIn(ECHO_PINX, HIGH, 30000);
+
+//     if (duration == 0) {
+//       Serial.println("Brak echa");
+//     }
+//     else {
+//       // prędkość dźwięku ~343 m/s = 0.0343 cm/us
+//       sonarXVal = duration * 0.0343 / 2.0;
+
+//       Serial.print("Odleglosc x: ");
+//       Serial.print(sonarXVal);
+//       Serial.println(" cm");
+//       xQueueOverwrite(sonarXQueue, &sonarXVal);
+//     }
+
+//     vTaskDelay(pdMS_TO_TICKS(100));
+//     // potVal = analogRead(POT_PIN);
+//     // xQueueOverwrite(potQueue, &potVal);
+//     // potVal = analogRead(POT_PIN);
+//     // Serial.print("Potencjometr: ");
+//     // Serial.println(potVal);
+//     // vTaskDelay(pdMS_TO_TICKS(100));
+//   }
+// }
 
 void setup() {
   Serial.begin(115200);
@@ -403,11 +425,11 @@ void setup() {
   pinMode(PIN_SER, OUTPUT);
   pinMode(PIN_RCLK, OUTPUT);
   pinMode(PIN_SRCLK, OUTPUT);
-  sonarXQueue = xQueueCreate(1, sizeof(int));
-  if (sonarXQueue != NULL){
-    xTaskCreatePinnedToCore(matrixTask, "TaskA", 2048, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(sonarTask, "TaskB", 2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(sonarXTask, "TaskB", 2048, NULL, 1, NULL, 1);
+  sonarPointQueue = xQueueCreate(1, sizeof(SonarPoint_t));
+  if (sonarPointQueue != NULL){
+    xTaskCreatePinnedToCore(matrixTask, "TaskA", 4096, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(sonarTask, "TaskB", 4096, NULL, 1, NULL, 1);
+    // xTaskCreatePinnedToCore(sonarXTask, "TaskB", 2048, NULL, 1, NULL, 1);
   } else {
     Serial.print("Nie udało się  utworzyć kolejki");
   }
@@ -416,4 +438,3 @@ void setup() {
 void loop() {
 
 }
-
