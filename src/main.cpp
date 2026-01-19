@@ -273,9 +273,7 @@ void matrixTask(void *pv) {
     if (xQueueReceive(sonarXQueue, &sonarYVal, portMAX_DELAY) == pdTRUE)
     {
       printf("Odebrano: %d\n", sonarYVal);
-      // for (int r = 0; r < 8; r++) {
         uint8_t rows = 0x00;
-        // rows &= ~(1 << r);
 
         uint8_t cols = sonarToCols(sonarYVal);
         
@@ -283,47 +281,20 @@ void matrixTask(void *pv) {
           write2(rows, cols);
           delayMicroseconds(800);
         }
-      // }
-      // c = (c + 1) % 8;
+     
       vTaskDelay(pdMS_TO_TICKS(1));
     }
     else
     {
         printf("Brak danych w kolejce!\n");
     }
-    // for (int r = 0; r < 8; r++) {
-    //   uint8_t rows = 0xFF;
-    //   rows &= ~(1 << r);
-    //   uint8_t cols = 0xFF;
-
-    //   for (int k = 0; k < 150; k++) {
-    //     write2(rows, cols);
-    //     delayMicroseconds(800);
-    //   }
-    // }
-
-    // c = (c + 1) % 8;
-    // vTaskDelay(pdMS_TO_TICKS(1));
-    // xQueueReceive(sonarXQueue, &sonarXVal, 0);
-    // xQueueReceive(sonarYQueue, &sonarYVal, 0);
-
-    // cols = sonarToCols(sonarXVal);
-    // rows = sonarToRows(sonarYVal);
-
-    // for (int k = 0; k < 150; k++) {
-    //   write2(rows, cols);
-    //   delayMicroseconds(800);
-    // }
-
-    // vTaskDelay(pdMS_TO_TICKS(10));
-  
+    
   }
 }
 
 void sonarTask(void *pv) {
   long duration;
   float sonarYVal;
-  // int potVal;
   for (;;) {
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
@@ -331,14 +302,12 @@ void sonarTask(void *pv) {
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    // pomiar ECHO (timeout 25 ms ~ 4 m przy 3.3 V raczej i tak mniej)
     duration = pulseIn(ECHO_PIN, HIGH, 30000);
 
     if (duration == 0) {
       Serial.println("Brak echa");
     }
     else {
-      // prędkość dźwięku ~343 m/s = 0.0343 cm/us
       sonarYVal = duration * 0.0343 / 2.0;
 
       Serial.print("Odleglosc y: ");
@@ -348,12 +317,6 @@ void sonarTask(void *pv) {
     }
 
     vTaskDelay(pdMS_TO_TICKS(100));
-    // potVal = analogRead(POT_PIN);
-    // xQueueOverwrite(potQueue, &potVal);
-    // potVal = analogRead(POT_PIN);
-    // Serial.print("Potencjometr: ");
-    // Serial.println(potVal);
-    // vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -368,14 +331,12 @@ void sonarXTask(void *pv) {
     delayMicroseconds(10);
     digitalWrite(TRIG_PINX, LOW);
 
-    // pomiar ECHO (timeout 25 ms ~ 4 m przy 3.3 V raczej i tak mniej)
     duration = pulseIn(ECHO_PINX, HIGH, 30000);
 
     if (duration == 0) {
       Serial.println("Brak echa");
     }
     else {
-      // prędkość dźwięku ~343 m/s = 0.0343 cm/us
       sonarXVal = duration * 0.0343 / 2.0;
 
       Serial.print("Odleglosc x: ");
@@ -385,12 +346,6 @@ void sonarXTask(void *pv) {
     }
 
     vTaskDelay(pdMS_TO_TICKS(100));
-    // potVal = analogRead(POT_PIN);
-    // xQueueOverwrite(potQueue, &potVal);
-    // potVal = analogRead(POT_PIN);
-    // Serial.print("Potencjometr: ");
-    // Serial.println(potVal);
-    // vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -403,7 +358,8 @@ void setup() {
   pinMode(PIN_SER, OUTPUT);
   pinMode(PIN_RCLK, OUTPUT);
   pinMode(PIN_SRCLK, OUTPUT);
-  sonarXQueue = xQueueCreate(1, sizeof(int));
+  sonarXQueue = xQueueCreate(1, sizeof(float));
+  sonarYQueue = xQueueCreate(1, sizeof(float));
   if (sonarXQueue != NULL){
     xTaskCreatePinnedToCore(matrixTask, "TaskA", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(sonarTask, "TaskB", 2048, NULL, 1, NULL, 1);
